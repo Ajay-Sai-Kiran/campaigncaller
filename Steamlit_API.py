@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import streamlit as st
 import os
 import json
@@ -236,7 +235,7 @@ if "user" not in st.session_state:
     login()
 else:
     app_main()
-=======
+
 import streamlit as st
 import os
 import json
@@ -474,4 +473,3 @@ if "user" not in st.session_state:
     login()
 else:
     app_main()
->>>>>>> 9f795f88c51711e29267dc811da3ce4fd23eeaaf
