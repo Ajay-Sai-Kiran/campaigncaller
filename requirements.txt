@@ -1,0 +1,8 @@
+streamlit
+requests
+python-dotenv
+pandas
+textblob
+matplotlib
+groq
+xlsxwriter
