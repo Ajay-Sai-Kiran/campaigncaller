@@ -74,7 +74,7 @@ def login():
     st.title("Login")
     email = st.text_input("Enter your Gmail address", key="email_input")
     if st.button("Login", key="login_button"):
-        if email and email.endswith("@gmail.com"):
+        if email and email.endswith(".com"):
             st.session_state.user = email
             st.rerun()
         else:
