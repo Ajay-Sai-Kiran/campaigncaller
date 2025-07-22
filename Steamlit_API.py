@@ -232,4 +232,8 @@ def app_main():
 if "user" not in st.session_state:
     login()
 else:
+<<<<<<< HEAD
     app_main()
+=======
+    app_main()
+>>>>>>> 090e0c240c17214241a0d1a51f1a68c4f511d8f4
