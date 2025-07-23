@@ -48,12 +48,6 @@ def save_log(entry):
     with open(LOG_FILE, "w") as f:
         json.dump(logs, f, indent=2)
 
-def load_logs():
-    try:
-        return json.load(open(LOG_FILE))
-    except:
-        return []
-
 def fetch_call_details(call_id):
     url = f"https://api.vapi.ai/call/{call_id}"
     resp = requests.get(url, headers=HEADERS, timeout=10)
@@ -69,6 +63,27 @@ def fetch_call_details(call_id):
     st.error("Failed to fetch call details.")
     return None
 
+def load_all_vapi_calls():
+    url = "https://api.vapi.ai/call"
+    resp = requests.get(url, headers=HEADERS)
+
+    if not resp.ok:
+        st.error(f"Failed to fetch calls. Status code: {resp.status_code}")
+        return []
+
+    try:
+        data = resp.json()
+    except json.JSONDecodeError:
+        st.error("Invalid JSON response from Vapi API.")
+        return []
+
+    if isinstance(data, list):
+        return data
+    elif isinstance(data, dict):
+        return data.get("calls", [])
+    else:
+        st.error("Unexpected response format from Vapi API.")
+        return []
 # Auth UI
 def login():
     st.title("Login")
@@ -102,11 +117,12 @@ def app_main():
         resp = requests.post("https://api.vapi.ai/call/phone", json=payload, headers=HEADERS)
         if resp.ok:
             data = resp.json()
+            call_id = data.get("id") or data.get("call", {}).get("id")
             st.success("Call initiated!")
             st.json(data)
             save_log({
                 "time": datetime.utcnow().isoformat(),
-                "call_id": data.get("id"),
+                "call_id": call_id,
                 "number": number
             })
         else:
@@ -115,22 +131,49 @@ def app_main():
             st.code(f"Response: {resp.text}")
             st.json(payload)
 
+    # Show all calls from Vapi
+    st.markdown("---")
+    st.subheader("📞 All Vapi Call Logs (Live from API)")
+
+    all_calls = load_all_vapi_calls()
+    if all_calls:
+        call_table = [
+            {
+                "Call ID": call.get("id"),
+                "Phone": call.get("customer", {}).get("number"),
+                "Start Time": call.get("startTime"),
+                "Status": call.get("status")
+            }
+            for call in all_calls
+        ]
+        df_calls = pd.DataFrame(call_table)
+        st.dataframe(df_calls)
+
+        call_options = [f"{row['Start Time']} - {row['Phone']} - {row['Call ID']}" for row in call_table]
+        selected = st.selectbox("Select a call to analyze", options=call_options)
+        selected_call_id = selected.split(" - ")[-1] if selected else None
+    else:
+        st.info("No calls found.")
+        selected_call_id = None
 
     # Fetch Transcript Section
     st.markdown("---")
     st.subheader("Fetch Call Transcripts")
 
-    call_id = st.text_input("Enter Call ID to fetch", key="transcript_call_id")
-    if st.button("Get Transcript", key="get_transcript_button"):
-        details = fetch_call_details(call_id)
+    if selected_call_id and st.button("Get Transcript", key="get_transcript_button"):
+        details = fetch_call_details(selected_call_id)
         parsed = []
         if details and isinstance(details, dict):
             transcript = details.get("transcript")
+            if not transcript:
+                transcripts = details.get("recording", {}).get("transcripts", [])
+                if transcripts:
+                    transcript = "\n".join([f"{t.get('speaker', 'Unknown').capitalize()}: {t.get('text', '')}" for t in transcripts])
+
             if transcript:
                 st.markdown("### 📄 Full Transcript")
                 st.text(transcript)
 
-                # Sentiment Analysis
                 st.subheader("😊 Sentiment Analysis")
                 blob = TextBlob(transcript)
                 polarity = blob.sentiment.polarity
@@ -138,7 +181,6 @@ def app_main():
                 st.write(f"**Polarity:** {polarity:.2f} (−1 = Negative, +1 = Positive)")
                 st.write(f"**Subjectivity:** {subjectivity:.2f} (0 = Objective, 1 = Subjective)")
 
-                # QA Evaluation
                 st.subheader("📊 QA Evaluation via LLaMA 4")
                 prompt = (
                     "You are a call QA evaluator.\n"
@@ -182,7 +224,6 @@ def app_main():
                             labels.append(item['question'][:50] + "...")
                         else:
                             st.markdown("**Rating Scale:** N/A")
-
                         st.markdown("---")
 
                     if ratings:
@@ -201,7 +242,6 @@ def app_main():
             else:
                 st.info("No transcript available.")
 
-            # Download QA Evaluation
             structured = details.get('analysis', {}).get('structuredData')
             if structured:
                 df_call = pd.DataFrame([structured])
@@ -211,22 +251,13 @@ def app_main():
                     df_call.to_excel(writer, index=False, sheet_name='CallData')
                     df_qa.to_excel(writer, index=False, sheet_name='QA Evaluation')
                 st.download_button(
-                    label="📥 Download Full Analysis (CallData + QA)",
+                    label="📅 Download Full Analysis (CallData + QA)",
                     data=output.getvalue(),
                     file_name='call_analysis.xlsx',
                     mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 )
         else:
             st.error("Could not fetch details or invalid response.")
-
-    # Call Logs
-    st.markdown("---")
-    st.subheader("📁 Saved Call Logs")
-    logs = load_logs()
-    if logs:
-        st.dataframe(logs)
-    else:
-        st.info("No calls logged yet.")
 
 if "user" not in st.session_state:
     login()
