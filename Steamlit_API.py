@@ -63,6 +63,14 @@ def fetch_call_details(call_id):
     st.error("Failed to fetch call details.")
     return None
 
+def format_timestamp(ts):
+    if not ts:
+        return "N/A"
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        return ts or "N/A"
+
 def load_all_vapi_calls():
     url = "https://api.vapi.ai/call"
     resp = requests.get(url, headers=HEADERS)
@@ -77,13 +85,21 @@ def load_all_vapi_calls():
         st.error("Invalid JSON response from Vapi API.")
         return []
 
-    if isinstance(data, list):
-        return data
-    elif isinstance(data, dict):
-        return data.get("calls", [])
-    else:
-        st.error("Unexpected response format from Vapi API.")
-        return []
+    calls = data.get("calls", []) if isinstance(data, dict) else data
+
+    for call in calls:
+        raw_start_time = (
+            call.get("startTime")
+            or call.get("startedAt")
+            or call.get("createdAt")
+            or call.get("timestamp")
+            or None
+        )
+        call["Start Time"] = format_timestamp(raw_start_time)
+
+    return calls
+
+
 # Auth UI
 def login():
     st.title("Login")
@@ -141,7 +157,7 @@ def app_main():
             {
                 "Call ID": call.get("id"),
                 "Phone": call.get("customer", {}).get("number"),
-                "Start Time": call.get("startTime"),
+                "Start Time": call.get("Start Time"),
                 "Status": call.get("status")
             }
             for call in all_calls
@@ -259,6 +275,7 @@ def app_main():
         else:
             st.error("Could not fetch details or invalid response.")
 
+# Entry Point
 if "user" not in st.session_state:
     login()
 else:
